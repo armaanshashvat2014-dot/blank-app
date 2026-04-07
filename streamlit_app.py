@@ -11,7 +11,7 @@ st.set_page_config(page_title="MentorLoop EDU Compass", page_icon="🧭", layout
 DB_FILE = "database.json"
 AI_LINK = "https://chatbot-79kdx1gk0gm.streamlit.app/"
 
-# --- DATABASE (FIXED) ---
+# --- DATABASE ---
 def load_db():
     default_db = {
         "users": {},
@@ -31,30 +31,23 @@ def load_db():
     except:
         return default_db
 
-    # 🔥 Auto-fix missing keys
     for key in default_db:
         if key not in data:
             data[key] = default_db[key]
 
     return data
 
-
 def save_db(data):
     with open(DB_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
-
 def hash_pass(p):
     return hashlib.sha256(str.encode(p)).hexdigest()
 
-
 db = load_db()
 
-# --- LOGGING (SAFE) ---
+# --- LOGGING ---
 def log_activity(user, action, detail):
-    if "logs" not in db:
-        db["logs"] = []
-
     db["logs"].append({
         "user": user,
         "action": action,
@@ -63,23 +56,41 @@ def log_activity(user, action, detail):
     })
     save_db(db)
 
-
 # --- ROLE ---
 def is_teacher(username):
     return username.startswith("teacher_")
 
+# --- RECOMMENDATION SYSTEM ---
+def get_recommendations(user):
+    logs = db.get("logs", [])
+    user_logs = [l["detail"].lower() for l in logs if l["user"] == user]
+
+    recs = []
+
+    for q in user_logs:
+        if any(w in q for w in ["math", "algebra", "geometry"]):
+            recs.append(("Khan Academy", "https://www.khanacademy.org"))
+
+        if any(w in q for w in ["science", "physics", "biology"]):
+            recs.append(("National Geographic", "https://www.nationalgeographic.com"))
+
+        if any(w in q for w in ["history", "ancient", "war"]):
+            recs.append(("Wikipedia", "https://www.wikipedia.org"))
+
+        if any(w in q for w in ["coding", "python", "ai"]):
+            recs.append(("Coursera", "https://www.coursera.org"))
+
+    return list(dict.fromkeys(recs))[:5]
 
 # --- SESSION ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
 
-
 # =====================
-# 🔐 AUTH SYSTEM
+# 🔐 LOGIN
 # =====================
 if not st.session_state.logged_in:
     st.title("🧭 MentorLoop EDU Compass")
-    st.markdown("### Secure Academic Gateway")
 
     tab1, tab2 = st.tabs(["Login", "Register"])
 
@@ -103,18 +114,17 @@ if not st.session_state.logged_in:
         if st.button("Register"):
             if role == "teacher":
                 nu = "teacher_" + nu
-
             db["users"][nu] = hash_pass(np)
             save_db(db)
-            st.success("Registered successfully!")
-
+            st.success("Registered!")
 
 # =====================
-# 🧭 MAIN SYSTEM
+# 🧭 MAIN
 # =====================
 else:
     user = st.session_state.user
 
+    # SIDEBAR
     st.sidebar.title("🧭 EDU Compass")
     st.sidebar.write(f"👤 {user}")
 
@@ -122,133 +132,143 @@ else:
         st.session_state.logged_in = False
         st.rerun()
 
+    # 📚 LEARNING APPS
+    st.sidebar.markdown("## 📚 Learning Apps")
+
+    apps = {
+        "Khan Academy": "https://www.khanacademy.org",
+        "MentorLoop EDU":"https://armaanshashvat2014dot.github.io/MentorLoop-EDU/",
+        "Wikipedia": "https://www.wikipedia.org",
+        "National Geographic": "https://www.nationalgeographic.com"
+    }
+
+    selected_app = st.sidebar.radio("Open App", list(apps.keys()))
+
+    if st.sidebar.button("Launch App"):
+        st.session_state.selected_url = apps[selected_app]
+
+    # 🎯 PERSONAL RECOMMENDATIONS
+    st.sidebar.markdown("## 🎯 Recommended for You")
+
+    recs = get_recommendations(user)
+
+    if recs:
+        for name, link in recs:
+            if st.sidebar.button(f"👉 {name}"):
+                st.session_state.selected_url = link
+    else:
+        st.sidebar.write("Start learning to get recommendations 🚀")
+
     # =====================
-    # 🧑‍🏫 TEACHER DASHBOARD
+    # 🧑‍🏫 TEACHER
     # =====================
     if is_teacher(user):
         st.title("🧑‍🏫 Teacher Dashboard")
 
-        # -------- Logs --------
-        st.subheader("📊 Student Activity Logs")
+        st.subheader("📊 Logs")
         for log in reversed(db["logs"][-50:]):
-            st.write(f"{log['time']} | {log['user']} → {log['action']} ({log['detail']})")
+            st.write(f"{log['user']} → {log['action']} ({log['detail']})")
 
-        # -------- Block System --------
-        st.subheader("🚫 Manage Blocked Websites")
+        st.subheader("🚫 Block Sites")
+        site = st.text_input("Site")
 
-        new_block = st.text_input("Enter site (e.g. youtube.com)")
-
-        if st.button("Add Block"):
-            if new_block and new_block not in db["blocked"]:
-                db["blocked"].append(new_block)
+        if st.button("Block"):
+            if site not in db["blocked"]:
+                db["blocked"].append(site)
                 save_db(db)
-                st.success("Site blocked!")
 
-        st.write("### Currently Blocked:")
-        for site in db["blocked"]:
-            col1, col2 = st.columns([3, 1])
-            col1.write(site)
-            if col2.button(f"Remove {site}"):
-                db["blocked"].remove(site)
+        for s in db["blocked"]:
+            if st.button(f"Remove {s}"):
+                db["blocked"].remove(s)
                 save_db(db)
                 st.rerun()
 
-        # -------- Exam Mode --------
-        st.subheader("🧪 Exam Mode Control")
+        st.subheader("🧪 Exam Mode")
+        t = st.number_input("Minutes", 1, 180)
 
-        exam_time = st.number_input("Set Exam Time (minutes)", min_value=1, max_value=180)
-
-        if st.button("Start Exam Mode"):
+        if st.button("Start Exam"):
             db["exam_mode"] = True
-            db["exam_timer"] = exam_time * 60
+            db["exam_timer"] = t * 60
             db["exam_start"] = time.time()
             save_db(db)
-            st.success("Exam Mode Activated!")
 
-        if st.button("Stop Exam Mode"):
+        if st.button("Stop Exam"):
             db["exam_mode"] = False
             save_db(db)
-            st.warning("Exam Mode Stopped")
-
-        # -------- Report --------
-        st.subheader("📈 Weekly Report")
-
-        user_stats = {}
-        for log in db["logs"]:
-            u = log["user"]
-            user_stats[u] = user_stats.get(u, 0) + 1
-
-        st.bar_chart(user_stats)
-        st.info("Focus Score = Activity Count")
 
     # =====================
-    # 🎓 STUDENT SIDE
+    # 🎓 STUDENT
     # =====================
     else:
 
-        # -------- EXAM MODE LOCK --------
+        # EXAM MODE
         if db.get("exam_mode"):
-            st.title("🧪 EXAM MODE ACTIVE")
+            st.title("🧪 EXAM MODE")
 
             remaining = int(db["exam_timer"] - (time.time() - db["exam_start"]))
 
             if remaining <= 0:
-                st.error("⏰ Exam Finished")
+                st.error("⏰ Time up")
                 db["exam_mode"] = False
                 save_db(db)
                 st.stop()
 
-            mins = remaining // 60
-            secs = remaining % 60
+            st.warning(f"⏳ {remaining//60}:{remaining%60:02d}")
 
-            st.warning(f"⏳ Time Left: {mins}:{secs:02d}")
+            ans = st.text_area("Answer")
 
-            answer = st.text_area("✍️ Enter your answer here:")
-
-            if st.button("Submit Answer"):
-                log_activity(user, "exam_submission", answer)
-                st.success("Submitted successfully!")
+            if st.button("Submit"):
+                log_activity(user, "exam", ans)
+                st.success("Submitted")
 
             st.stop()
 
-        # -------- NORMAL BROWSER --------
-        st.title("🌐MentorLoop EDU Compass")
+        # MAIN UI
+        st.title("🌐 Smart EDU Browser")
 
-        query = st.text_input("Search or Enter URL")
+        # OPEN SELECTED APP
+        if "selected_url" in st.session_state:
+            st.components.v1.iframe(st.session_state.selected_url, height=500)
 
-        if query:
-            log_activity(user, "search", query)
+        mode = st.radio("Mode", ["🔍 Search", "💬 Chat"])
 
-            # Block check
-            for site in db.get("blocked", []):
-                if site.lower() in query.lower():
-                    st.error("🚫 This site is blocked by your teacher.")
-                    log_activity(user, "blocked_attempt", query)
-                    st.stop()
+        query = st.text_input("Search or Ask")
 
-            url_pattern = r'[a-zA-Z0-9-]+\.[a-zA-Z]{2,}'
-            is_url = re.search(url_pattern, query)
+        # CHAT MODE
+        if mode == "💬 Chat":
+            st.components.v1.iframe(AI_LINK, height=700)
 
-            if is_url:
-                url = query if query.startswith("http") else "https://" + query
-                log_activity(user, "visit", url)
+        # SEARCH MODE
+        else:
+            if query:
+                log_activity(user, "search", query)
 
-                st.success(f"Opening: {url}")
-                st.link_button("🚀 Open Website", url)
-                st.components.v1.iframe(url, height=600)
+                # MATH
+                if re.match(r"^[0-9\+\-\*\/\(\)\.\s]+$", query):
+                    try:
+                        res = eval(query, {"__builtins__": None}, {})
+                        st.success(f"🔢 Answer: {res}")
+                        st.stop()
+                    except:
+                        pass
 
-            else:
-                st.success(f"📘 Learning about: {query}")
-                st.link_button("✨ Explain with AI", f"{AI_LINK}?q={query}")
+                # BLOCK
+                for s in db["blocked"]:
+                    if s.lower() in query.lower():
+                        st.error("🚫 This site is blocked")
+                        st.stop()
 
-        # -------- STUDENT REPORT --------
-        st.subheader("📊 Your Weekly Report")
+                # URL
+                if re.search(r'[a-zA-Z0-9-]+\.[a-zA-Z]{2,}', query):
+                    url = query if query.startswith("http") else "https://" + query
+                    st.components.v1.iframe(url, height=500)
 
-        my_logs = [l for l in db["logs"] if l["user"] == user]
+                else:
+                    st.subheader(f"🧠 AI Answer: {query}")
+                    st.components.v1.iframe(f"{AI_LINK}?q={query}", height=700)
 
-        st.write(f"Total Activity: {len(my_logs)}")
-
-        focus_score = min(100, len(my_logs) * 2)
-        st.progress(focus_score)
-
-        st.write(f"Focus Score: {focus_score}/100")
+        # REPORT
+        logs = [l for l in db["logs"] if l["user"] == user]
+        st.subheader("📊 Report")
+        st.write(f"Activity: {len(logs)}")
+        st.progress(min(100, len(logs)*2))
