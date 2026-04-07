@@ -3,272 +3,132 @@ import hashlib
 import json
 import os
 import re
-import time
-from datetime import datetime
 
-# --- CONFIG ---
+# --- CONFIGURATION ---
 st.set_page_config(page_title="MentorLoop EDU Compass", page_icon="🧭", layout="wide")
 DB_FILE = "database.json"
 AI_LINK = "https://chatbot-79kdx1gk0gm.streamlit.app/"
 
-# --- DATABASE ---
+# --- DATABASE LOGIC ---
 def load_db():
-    default_db = {
-        "users": {},
-        "logs": [],
-        "blocked": [],
-        "exam_mode": False,
-        "exam_timer": 0,
-        "exam_start": 0
-    }
-
-    if not os.path.exists(DB_FILE):
-        return default_db
-
+    if not os.path.exists(DB_FILE): return {"users": {}}
     try:
-        with open(DB_FILE, "r") as f:
-            data = json.load(f)
-    except:
-        return default_db
-
-    for key in default_db:
-        if key not in data:
-            data[key] = default_db[key]
-
-    return data
+        with open(DB_FILE, "r") as f: return json.load(f)
+    except: return {"users": {}}
 
 def save_db(data):
-    with open(DB_FILE, "w") as f:
-        json.dump(data, f, indent=4)
+    with open(DB_FILE, "w") as f: json.dump(data, f, indent=4)
 
-def hash_pass(p):
-    return hashlib.sha256(str.encode(p)).hexdigest()
+def hash_pass(p): return hashlib.sha256(str.encode(p)).hexdigest()
 
-db = load_db()
+# --- THE COMPASS ENGINES ---
+def process_query(q):
+    q_clean = q.lower().strip()
+    
+    # 1. MATH ENGINE
+    if re.match(r"^[0-9\+\-\*\/\(\)\s\.]+$", q_clean):
+        try:
+            res = eval(q_clean, {"__builtins__": None}, {})
+            return f"🔢 **Calculation Result:** {res}", "Mathematics"
+        except: pass
 
-# --- LOGGING ---
-def log_activity(user, action, detail):
-    db["logs"].append({
-        "user": user,
-        "action": action,
-        "detail": detail,
-        "time": str(datetime.now())
-    })
-    save_db(db)
+    # 2. DEFINITION ENGINE
+    knowledge = {
+        "science": "The systematic study of the physical and natural world.",
+        "math": "The study of numbers, quantity, and space.",
+        "extermination": "Biological: Total removal of pests. Historical: Systematic mass killing.",
+        "physics": "The science of matter, energy, and motion.",
+        "biology": "The study of living organisms.",
+        "chemistry": "The science of substances and their reactions."
+    }
+    
+    if q_clean in knowledge:
+        return knowledge[q_clean], q_clean.capitalize()
+    
+    return f"MentorLoop EDU Compass has indexed '{q}' under general academic studies.", "General Inquiry"
 
-# --- ROLE ---
-def is_teacher(username):
-    return username.startswith("teacher_")
+# --- AUTH SYSTEM ---
+if 'logged_in' not in st.session_state: st.session_state.logged_in = False
 
-# --- RECOMMENDATION SYSTEM ---
-def get_recommendations(user):
-    logs = db.get("logs", [])
-    user_logs = [l["detail"].lower() for l in logs if l["user"] == user]
-
-    recs = []
-
-    for q in user_logs:
-        if any(w in q for w in ["math", "algebra", "geometry"]):
-            recs.append(("Khan Academy", "https://www.khanacademy.org"))
-
-        if any(w in q for w in ["science", "physics", "biology"]):
-            recs.append(("National Geographic", "https://www.nationalgeographic.com"))
-
-        if any(w in q for w in ["history", "ancient", "war"]):
-            recs.append(("Wikipedia", "https://www.wikipedia.org"))
-
-        if any(w in q for w in ["coding", "python", "ai"]):
-            recs.append(("Coursera", "https://www.coursera.org"))
-
-    return list(dict.fromkeys(recs))[:5]
-
-# --- SESSION ---
-if 'logged_in' not in st.session_state:
-    st.session_state.logged_in = False
-
-# =====================
-# 🔐 LOGIN
-# =====================
 if not st.session_state.logged_in:
     st.title("🧭 MentorLoop EDU Compass")
-
+    st.markdown("### Secure Academic Gateway")
+    
     tab1, tab2 = st.tabs(["Login", "Register"])
-
     with tab1:
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
-
-        if st.button("Login"):
+        u = st.text_input("Username", key="login_u")
+        p = st.text_input("Password", type="password", key="login_p")
+        if st.button("Access Compass"):
+            db = load_db()
             if u in db["users"] and db["users"][u] == hash_pass(p):
                 st.session_state.logged_in = True
                 st.session_state.user = u
                 st.rerun()
-            else:
-                st.error("Invalid credentials")
-
+            else: st.error("Invalid credentials.")
     with tab2:
-        nu = st.text_input("New Username")
-        np = st.text_input("New Password", type="password")
-        role = st.selectbox("Role", ["student", "teacher"])
+        nu = st.text_input("New Username", key="reg_u")
+        np = st.text_input("New Password", type="password", key="reg_p")
+        if st.button("Create Local ID"):
+            if nu and np:
+                db = load_db()
+                db["users"][nu] = hash_pass(np)
+                save_db(db)
+                st.success("Registered! You can now login.")
 
-        if st.button("Register"):
-            if role == "teacher":
-                nu = "teacher_" + nu
-            db["users"][nu] = hash_pass(np)
-            save_db(db)
-            st.success("Registered!")
-
-# =====================
-# 🧭 MAIN
-# =====================
+# --- BROWSER INTERFACE ---
 else:
-    user = st.session_state.user
-
-    # SIDEBAR
+    # Sidebar
     st.sidebar.title("🧭 EDU Compass")
-    st.sidebar.write(f"👤 {user}")
-
+    st.sidebar.write(f"Active User: **{st.session_state.user}**")
+    
+    st.sidebar.write("### AI INTEGRATION")
+    # Verified direct link for AI Assistant
+    st.sidebar.link_button("✨ Launch AI Assistant", AI_LINK, use_container_width=True)
+    
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.rerun()
 
-    # 📚 LEARNING APPS
-    st.sidebar.markdown("## 📚 Learning Apps")
+    # Main Browser Interface
+    st.title("MentorLoop EDU Compass")
+    user_input = st.text_input("🌐 Enter Topic, Math, or URL (e.g. wikipedia.org, 12*12, or science)")
 
-    apps = {
-        "Khan Academy": "https://www.khanacademy.org",
-        "MentorLoop EDU":"https://armaanshashvat2014dot.github.io/MentorLoop-EDU/",
-        "Wikipedia": "https://www.wikipedia.org",
-        "National Geographic": "https://www.nationalgeographic.com"
-    }
+    if user_input:
+        # --- SMART URL PARSER ---
+        # Detects if input looks like a website (has .org, .com, .io, .net, etc.)
+        url_pattern = r'[a-zA-Z0-9-]+\.[a-zA-Z]{2,}'
+        is_url = re.search(url_pattern, user_input) or user_input.startswith("http")
 
-    selected_app = st.sidebar.radio("Open App", list(apps.keys()))
-
-    if st.sidebar.button("Launch App"):
-        st.session_state.selected_url = apps[selected_app]
-
-    # 🎯 PERSONAL RECOMMENDATIONS
-    st.sidebar.markdown("## 🎯 Recommended for You")
-
-    recs = get_recommendations(user)
-
-    if recs:
-        for name, link in recs:
-            if st.sidebar.button(f"👉 {name}"):
-                st.session_state.selected_url = link
-    else:
-        st.sidebar.write("Start learning to get recommendations 🚀")
-
-    # =====================
-    # 🧑‍🏫 TEACHER
-    # =====================
-    if is_teacher(user):
-        st.title("🧑‍🏫 Teacher Dashboard")
-
-        st.subheader("📊 Logs")
-        for log in reversed(db["logs"][-50:]):
-            st.write(f"{log['user']} → {log['action']} ({log['detail']})")
-
-        st.subheader("🚫 Block Sites")
-        site = st.text_input("Site")
-
-        if st.button("Block"):
-            if site not in db["blocked"]:
-                db["blocked"].append(site)
-                save_db(db)
-
-        for s in db["blocked"]:
-            if st.button(f"Remove {s}"):
-                db["blocked"].remove(s)
-                save_db(db)
-                st.rerun()
-
-        st.subheader("🧪 Exam Mode")
-        t = st.number_input("Minutes", 1, 180)
-
-        if st.button("Start Exam"):
-            db["exam_mode"] = True
-            db["exam_timer"] = t * 60
-            db["exam_start"] = time.time()
-            save_db(db)
-
-        if st.button("Stop Exam"):
-            db["exam_mode"] = False
-            save_db(db)
-
-    # =====================
-    # 🎓 STUDENT
-    # =====================
-    else:
-
-        # EXAM MODE
-        if db.get("exam_mode"):
-            st.title("🧪 EXAM MODE")
-
-            remaining = int(db["exam_timer"] - (time.time() - db["exam_start"]))
-
-            if remaining <= 0:
-                st.error("⏰ Time up")
-                db["exam_mode"] = False
-                save_db(db)
-                st.stop()
-
-            st.warning(f"⏳ {remaining//60}:{remaining%60:02d}")
-
-            ans = st.text_area("Answer")
-
-            if st.button("Submit"):
-                log_activity(user, "exam", ans)
-                st.success("Submitted")
-
-            st.stop()
-
-        # MAIN UI
-        st.title("🌐 Smart EDU Browser")
-
-        # OPEN SELECTED APP
-        if "selected_url" in st.session_state:
-            st.components.v1.iframe(st.session_state.selected_url, height=500)
-
-        mode = st.radio("Mode", ["🔍 Search", "💬 Chat"])
-
-        query = st.text_input("Search or Ask")
-
-        # CHAT MODE
-        if mode == "💬 Chat":
-            st.components.v1.iframe(AI_LINK, height=700)
-
-        # SEARCH MODE
+        if is_url:
+            # Auto-format to include https:// if missing
+            final_url = user_input if user_input.startswith("http") else "https://" + user_input
+            
+            st.success(f"Navigating to: {final_url}")
+            
+            # Action Buttons for URLs
+            c1, c2 = st.columns(2)
+            with c1:
+                st.link_button(f"🚀 Open Website: {user_input}", final_url, use_container_width=True)
+            with c2:
+                # Direct AI analysis of the URL
+                st.link_button("✨ Analyze with AI", f"{AI_LINK}?target={final_url}", use_container_width=True)
+            
+            st.info("Direct View (If the panel below is blank, the site has security blocking. Use the 'Open Website' button above.)")
+            st.components.v1.iframe(final_url, height=700, scrolling=True)
+        
         else:
-            if query:
-                log_activity(user, "search", query)
-
-                # MATH
-                if re.match(r"^[0-9\+\-\*\/\(\)\.\s]+$", query):
-                    try:
-                        res = eval(query, {"__builtins__": None}, {})
-                        st.success(f"🔢 Answer: {res}")
-                        st.stop()
-                    except:
-                        pass
-
-                # BLOCK
-                for s in db["blocked"]:
-                    if s.lower() in query.lower():
-                        st.error("🚫 This site is blocked")
-                        st.stop()
-
-                # URL
-                if re.search(r'[a-zA-Z0-9-]+\.[a-zA-Z]{2,}', query):
-                    url = query if query.startswith("http") else "https://" + query
-                    st.components.v1.iframe(url, height=500)
-
-                else:
-                    st.subheader(f"🧠 AI Answer: {query}")
-                    st.components.v1.iframe(f"{AI_LINK}?q={query}", height=700)
-
-        # REPORT
-        logs = [l for l in db["logs"] if l["user"] == user]
-        st.subheader("📊 Report")
-        st.write(f"Activity: {len(logs)}")
-        st.progress(min(100, len(logs)*2))
+            # --- TOPIC / MATH MODE ---
+            result, category = process_query(user_input)
+            
+            st.markdown(f"""
+                <div style="background-color: #fcfcfc; padding: 25px; border-radius: 12px; border: 1px solid #ddd; color: black; box-shadow: 2px 2px 10px rgba(0,0,0,0.05);">
+                    <small style="color: grey;">Compass Indexing: {category}</small>
+                    <h2 style="color: #1a73e8; margin-top: 5px;">{user_input.upper()}</h2>
+                    <hr>
+                    <p style="font-size: 20px; line-height: 1.5;">{result}</p>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            st.write("")
+            # Deep dive link
+            st.link_button(f"🔍 Deep AI Analysis for {user_input}", f"{AI_LINK}?q={user_input}")
