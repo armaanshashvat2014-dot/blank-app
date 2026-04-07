@@ -11,31 +11,50 @@ st.set_page_config(page_title="MentorLoop EDU Compass", page_icon="🧭", layout
 DB_FILE = "database.json"
 AI_LINK = "https://chatbot-79kdx1gk0gm.streamlit.app/"
 
-# --- DATABASE ---
+# --- DATABASE (FIXED) ---
 def load_db():
+    default_db = {
+        "users": {},
+        "logs": [],
+        "blocked": [],
+        "exam_mode": False,
+        "exam_timer": 0,
+        "exam_start": 0
+    }
+
     if not os.path.exists(DB_FILE):
-        return {
-            "users": {},
-            "logs": [],
-            "blocked": [],
-            "exam_mode": False,
-            "exam_timer": 0,
-            "exam_start": 0
-        }
-    with open(DB_FILE, "r") as f:
-        return json.load(f)
+        return default_db
+
+    try:
+        with open(DB_FILE, "r") as f:
+            data = json.load(f)
+    except:
+        return default_db
+
+    # 🔥 Auto-fix missing keys
+    for key in default_db:
+        if key not in data:
+            data[key] = default_db[key]
+
+    return data
+
 
 def save_db(data):
     with open(DB_FILE, "w") as f:
         json.dump(data, f, indent=4)
 
+
 def hash_pass(p):
     return hashlib.sha256(str.encode(p)).hexdigest()
 
+
 db = load_db()
 
-# --- LOGGING ---
+# --- LOGGING (SAFE) ---
 def log_activity(user, action, detail):
+    if "logs" not in db:
+        db["logs"] = []
+
     db["logs"].append({
         "user": user,
         "action": action,
@@ -44,13 +63,16 @@ def log_activity(user, action, detail):
     })
     save_db(db)
 
+
 # --- ROLE ---
 def is_teacher(username):
     return username.startswith("teacher_")
 
+
 # --- SESSION ---
 if 'logged_in' not in st.session_state:
     st.session_state.logged_in = False
+
 
 # =====================
 # 🔐 AUTH SYSTEM
@@ -64,6 +86,7 @@ if not st.session_state.logged_in:
     with tab1:
         u = st.text_input("Username")
         p = st.text_input("Password", type="password")
+
         if st.button("Login"):
             if u in db["users"] and db["users"][u] == hash_pass(p):
                 st.session_state.logged_in = True
@@ -84,6 +107,7 @@ if not st.session_state.logged_in:
             db["users"][nu] = hash_pass(np)
             save_db(db)
             st.success("Registered successfully!")
+
 
 # =====================
 # 🧭 MAIN SYSTEM
@@ -122,7 +146,7 @@ else:
 
         st.write("### Currently Blocked:")
         for site in db["blocked"]:
-            col1, col2 = st.columns([3,1])
+            col1, col2 = st.columns([3, 1])
             col1.write(site)
             if col2.button(f"Remove {site}"):
                 db["blocked"].remove(site)
@@ -211,7 +235,6 @@ else:
 
                 st.success(f"Opening: {url}")
                 st.link_button("🚀 Open Website", url)
-
                 st.components.v1.iframe(url, height=600)
 
             else:
