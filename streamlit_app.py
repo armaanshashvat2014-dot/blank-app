@@ -3,71 +3,49 @@ import hashlib
 import json
 import os
 import re
-import time
+import urllib.parse
 
 # --- CONFIGURATION ---
 st.set_page_config(page_title="MentorLoop EDU Compass", page_icon="🧭", layout="wide")
+
+# This is your AI Assistant URL
+AI_LINK = "https://chatbot-79kdx1gk0gm.streamlit.app/" 
 DB_FILE = "database.json"
-AI_LINK = "https://chatbot-79kdx1gk0gm.streamlit.app/"
 
 # --- RESTRICTION SETTINGS ---
-BANNED_PLATFORMS = ["facebook.com", "instagram.com", "youtube.com", "tiktok.com", "twitter.com", "x.com", "reddit.com"]
+# List of non-educational platforms to block
+BANNED_PLATFORMS = [
+    "facebook.com", "instagram.com", "youtube.com", "tiktok.com", 
+    "twitter.com", "x.com", "reddit.com", "netflix.com", 
+    "twitch.tv", "snapchat.com", "discord.com"
+]
 
 # --- DATABASE LOGIC ---
 def load_db():
-    if not os.path.exists(DB_FILE): return {"users": {}}
+    if not os.path.exists(DB_FILE): 
+        return {"users": {}}
     try:
-        with open(DB_FILE, "r") as f: return json.load(f)
-    except: return {"users": {}}
+        with open(DB_FILE, "r") as f: 
+            content = f.read()
+            return json.loads(content) if content else {"users": {}}
+    except Exception: 
+        return {"users": {}}
 
 def save_db(data):
-    with open(DB_FILE, "w") as f: json.dump(data, f, indent=4)
+    with open(DB_FILE, "w") as f: 
+        json.dump(data, f, indent=4)
 
-def hash_pass(p): return hashlib.sha256(str.encode(p)).hexdigest()
-
-# --- THE COMPASS ENGINES (INTEGRATED AI) ---
-def get_ai_response(query):
-    """
-    Simulates fetching an answer from the linked AI engine.
-    In a production app, you would use requests.post(API_URL) here.
-    """
-    query = query.lower().strip()
-    
-    # Simulate processing delay for 'AI-feel'
-    with st.spinner('🤖 Consultant AI is generating response...'):
-        time.sleep(1.2) 
-    
-    # 1. MATH LOGIC
-    if re.match(r"^[0-9\+\-\*\/\(\)\s\.]+$", query):
-        try:
-            res = eval(query, {"__builtins__": None}, {})
-            return f"### 🔢 Calculation Result\nAfter processing your mathematical expression, the result is: **{res}**.", "Mathematics"
-        except:
-            return "I attempted to calculate that, but the syntax seems incorrect. Please check your numbers.", "Error"
-
-    # 2. ENHANCED KNOWLEDGE ENGINE (SIMULATING AI RETRIEVAL)
-    # This acts as the "Internal AI" answer
-    knowledge_base = {
-        "science": "Science is the systematic enterprise that builds and organizes knowledge in the form of testable explanations and predictions about the universe.",
-        "photosynthesis": "Photosynthesis is the process used by plants and other organisms to convert light energy into chemical energy (sugar).",
-        "gravity": "Gravity is a fundamental interaction which causes mutual attraction between all things with mass or energy.",
-        "coding": "Coding, or programming, is the process of creating instructions for computers to follow using specific languages like Python or C++."
-    }
-
-    if query in knowledge_base:
-        return f"### 🧠 AI Knowledge Index\n{knowledge_base[query]}", query.capitalize()
-    
-    # 3. FALLBACK AI (General Logic)
-    return (f"### 🌐 AI Analysis\nI have analyzed your query regarding **'{query}'**. \n\n"
-            f"Based on academic records, this topic falls under **General Research**. To provide a more detailed "
-            "dissertation, please connect to the high-performance AI cluster using the link in the sidebar."), "General Inquiry"
+def hash_pass(p): 
+    return hashlib.sha256(str.encode(p)).hexdigest()
 
 # --- AUTH SYSTEM ---
-if 'logged_in' not in st.session_state: st.session_state.logged_in = False
+if 'logged_in' not in st.session_state: 
+    st.session_state.logged_in = False
 
 if not st.session_state.logged_in:
     st.title("🧭 MentorLoop EDU Compass")
     st.markdown("### Secure Academic Gateway")
+    st.info("Log in to access the AI Research Compass and Educational Browser.")
     
     tab1, tab2 = st.tabs(["Login", "Register"])
     with tab1:
@@ -79,7 +57,8 @@ if not st.session_state.logged_in:
                 st.session_state.logged_in = True
                 st.session_state.user = u
                 st.rerun()
-            else: st.error("Invalid credentials.")
+            else: 
+                st.error("Invalid credentials.")
     with tab2:
         nu = st.text_input("New Username", key="reg_u")
         np = st.text_input("New Password", type="password", key="reg_p")
@@ -90,52 +69,76 @@ if not st.session_state.logged_in:
                 save_db(db)
                 st.success("Registered! You can now login.")
 
-# --- BROWSER INTERFACE ---
+# --- MAIN BROWSER & AI INTERFACE ---
 else:
+    # Sidebar Navigation
     st.sidebar.title("🧭 EDU Compass")
     st.sidebar.write(f"Active User: **{st.session_state.user}**")
     st.sidebar.divider()
-    st.sidebar.write("### AI CLUSTER STATUS")
-    st.sidebar.success("● Connected to MentorLoop AI")
-    st.sidebar.link_button("✨ Advanced AI Dashboard", AI_LINK, use_container_width=True)
+    st.sidebar.success("✅ AI Cluster Connected")
     
     if st.sidebar.button("Logout"):
         st.session_state.logged_in = False
         st.rerun()
 
     st.title("MentorLoop EDU Compass")
-    user_input = st.text_input("🌐 Enter Topic, Math, or Website URL")
+    st.markdown("##### Research Topic, Math, or Website")
+    
+    user_input = st.text_input("🌐 Enter a question (for AI summary) or a website URL (e.g. 'wikipedia.org' or 'physics concepts')", placeholder="What would you like to explore today?")
 
     if user_input:
-        # Check if input is a URL
-        url_pattern = r'[a-zA-Z0-9-]+\.[a-zA-Z]{2,}'
-        is_url = re.search(url_pattern, user_input) or user_input.startswith("http")
-
-        if is_url:
-            # BLOCKLIST CHECK
-            is_banned = any(platform in user_input.lower() for platform in BANNED_PLATFORMS)
-            if is_banned:
-                st.error("🚫 **Access Denied.** Social Media/Entertainment is blocked for productivity.")
-            else:
-                final_url = user_input if user_input.startswith("http") else "https://" + user_input
-                st.info(f"Navigating to External Resource...")
-                st.components.v1.iframe(final_url, height=600, scrolling=True)
+        # 1. CLEANING & LOGIC PREP
+        query_lower = user_input.lower().strip()
+        
+        # 2. CHECK FOR BANNED PLATFORMS
+        is_banned = any(platform in query_lower for platform in BANNED_PLATFORMS)
+        
+        if is_banned:
+            st.error("🚫 **Access Denied.** MentorLoop EDU Compass has restricted this platform to maintain an educational focus. Please try a different resource or ask the AI.")
+        
         else:
-            # --- AI ANSWER SECTION ---
-            ai_result, category = get_ai_response(user_input)
-            
-            st.markdown(f"""
-                <div style="background-color: #ffffff; padding: 30px; border-radius: 15px; border-left: 8px solid #1a73e8; color: #333; box-shadow: 0px 4px 12px rgba(0,0,0,0.1);">
-                    <p style="color: #666; font-size: 12px; margin-bottom: 0;">SOURCE: AI COMPASS ENGINE | CATEGORY: {category}</p>
-                    <div style="font-family: 'Segoe UI', sans-serif;">
-                        {ai_result}
-                    </div>
-                </div>
-            """, unsafe_allow_html=True)
-            
-            # Action buttons for the answer
-            st.write("")
-            col1, col2 = st.columns([1, 4])
-            with col1:
-                # Deep link to your other app for further chat
-                st.link_button("💬 Chat about this", f"{AI_LINK}?q={user_input}")
+            # 3. DETECT IF INPUT IS A URL OR A QUESTION
+            url_pattern = r'[a-zA-Z0-9-]+\.[a-zA-Z]{2,}'
+            is_website = re.search(url_pattern, query_lower) or query_lower.startswith("http")
+
+            if is_website:
+                # --- WEBSITE MODE ---
+                final_url = user_input if user_input.startswith("http") else "https://" + user_input
+                st.caption(f"Navigating to External Resource...")
+                
+                # Action bar for URLs
+                c1, c2 = st.columns([1, 5])
+                with c1:
+                    st.link_button("🚀 Open Tab", final_url)
+                with c2:
+                    st.info(f"Viewing: {final_url}")
+                
+                # Embedded Browser
+                st.components.v1.iframe(final_url, height=800, scrolling=True)
+
+            else:
+                # --- AI SUMMARY MODE (Your AI App) ---
+                # We encode the user question and pass it to your AI app via URL parameter
+                encoded_query = urllib.parse.quote(user_input)
+                
+                # This constructs the link to your specific AI tool with the question attached
+                # Assumes your AI app is set up to read st.query_params
+                target_ai_url = f"{AI_LINK}?q={encoded_query}"
+                
+                st.subheader(f"✨ AI Summary: {user_input}")
+                st.markdown(f"Fetching integrated analysis from your **Consultant AI**...")
+
+                # Embed your AI app directly so the user sees the answer immediately
+                st.components.v1.iframe(target_ai_url, height=900, scrolling=True)
+                
+                # Back-up option if the iframe is blocked
+                st.link_button("💬 Open AI in Full Screen", target_ai_url)
+
+# --- CSS STYLING (Optional for a cleaner look) ---
+st.markdown("""
+    <style>
+    .stTextInput > div > div > input {
+        background-color: #f0f2f6;
+    }
+    </style>
+    """, unsafe_allow_html=True)
